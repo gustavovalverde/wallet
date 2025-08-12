@@ -505,6 +505,7 @@ impl KeyStore {
         Ok(seed_fp)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn encrypt_and_store_legacy_seed(
         &self,
         legacy_seed: &SecretVec<u8>,
@@ -594,6 +595,7 @@ fn encrypt_string(
     Ok(ciphertext)
 }
 
+#[allow(dead_code)]
 fn encrypt_legacy_seed_bytes(
     recipients: &[Box<dyn age::Recipient + Send>],
     seed: &SecretVec<u8>,
