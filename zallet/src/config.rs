@@ -1,7 +1,6 @@
 //! Zallet Config
 
 use std::collections::{BTreeMap, HashMap};
-use std::env;
 use std::fmt::Write;
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
@@ -15,6 +14,7 @@ use zcash_protocol::{consensus::NetworkType, value::Zatoshis};
 use zip32::fingerprint::SeedFingerprint;
 
 use crate::commands::{lock_datadir, resolve_datadir_path};
+use crate::components::safe_environment::SafeEnvironment;
 use crate::network::{Network, RegTestNuParam};
 
 /// Returns true if a leaf key name should be considered sensitive and blocked
@@ -113,37 +113,23 @@ impl ZalletConfig {
             builder = builder.add_source(config::File::from(path).required(true));
         }
 
-        // Load from standard ZALLET_ environment variables with a sensitive-leaf deny-list
-        let mut filtered_env: HashMap<String, String> = HashMap::new();
-        for (key, value) in env::vars() {
-            if let Some(stripped) = key.strip_prefix("ZALLET_") {
-                // Extract the leaf key (rightmost part after splitting on __)
-                let leaf_key = stripped.split("__").last().unwrap_or(stripped);
-                if !is_sensitive_leaf_key(leaf_key) {
-                    filtered_env.insert(key, value);
-                }
-                // Sensitive keys are silently ignored
-            }
-        }
-
         // Add filtered environment variables (highest precedence)
-        builder = builder.add_source(
-            config::Environment::with_prefix("ZALLET")
-                .source(Some(filtered_env))
-                .prefix_separator("_")
-                .separator("__")
-                // Unlike the fields of a TOML file, environment variables are always
-                // strings. While serde can handle that internally for primitive types, we
-                // are forced to enable parsing env vars as one of `bool`, `i64`, `f64`
-                // before we can parse comma-separated lists (to regain the ability to
-                // configure arrays of values like we can in TOML files).
-                .try_parsing(true)
-                .list_separator(",")
-                // We need to specify explicitly which environment variables should be
-                // parsed as comma-separated lists, otherwise we lose the ability to
-                // represent a plain string.
-                .with_list_parse_key("rpc.bind"),
-        );
+        // TODO: Replace with config::Environment::source_os() once upstream accepts our PR
+        let safe_env = SafeEnvironment::with_prefix_and_filter("ZALLET", |stripped| {
+            // Extract the leaf key (rightmost part after splitting on __)
+            let leaf_key = stripped.split("__").last().unwrap_or(stripped);
+            !is_sensitive_leaf_key(leaf_key)
+        })
+        .map_err(|e| {
+            config::ConfigError::Message(format!("Failed to create safe environment source: {e}"))
+        })?
+        .separator("__")
+        .prefix_separator("_")
+        .try_parsing(true)
+        .list_separator(",")
+        .with_list_parse_key("rpc.bind");
+
+        builder = builder.add_source(safe_env);
 
         // Build and deserialize the configuration
         builder.build()?.try_deserialize()

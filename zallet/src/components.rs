@@ -11,6 +11,7 @@ pub(crate) mod chain_view;
 pub(crate) mod database;
 pub(crate) mod json_rpc;
 pub(crate) mod keystore;
+pub(crate) mod safe_environment;
 pub(crate) mod sync;
 pub(crate) mod tracing;
 
